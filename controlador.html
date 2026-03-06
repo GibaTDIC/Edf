@@ -1169,86 +1169,89 @@
         }
 
         // Carregar controlador do Firebase
-        function carregarControladorFirebase() {
-            onValue(controladorRef, (snapshot) => {
-                const data = snapshot.val();
-                
-                let controladorBanco = data?.aulas || [];
-let alterou = false;
+       // Carregar controlador do Firebase com Sincronização de numAulas
+function carregarControladorFirebase() {
+    onValue(controladorRef, (snapshot) => {
+        const data = snapshot.val();
+        let controladorBanco = data?.aulas || [];
+        let alterou = false;
 
-aulasFirebase.forEach((aulaBase, indexAula) => {
+        aulasFirebase.forEach((aulaBase, indexAula) => {
+            TURMAS_SEXTO_ANO.forEach((turma) => {
+                const jaExiste = controladorBanco.find(a =>
+                    a.firebaseId === aulaBase.id && a.turma === turma
+                );
 
-    TURMAS_SEXTO_ANO.forEach((turma) => {
+                if (!jaExiste) {
+                    // CRIAÇÃO (Sua lógica atual)
+                    const dataInicio = new Date();
+                    dataInicio.setDate(dataInicio.getDate() + (indexAula * 3));
+                    const prazo = new Date(dataInicio);
+                    prazo.setDate(prazo.getDate() + 7);
 
-        const jaExiste = controladorBanco.find(a =>
-            a.firebaseId === aulaBase.id && a.turma === turma
-        );
-
-        if (!jaExiste) {
-
-            const dataInicio = new Date();
-            dataInicio.setDate(dataInicio.getDate() + (indexAula * 3));
-
-            const prazo = new Date(dataInicio);
-            prazo.setDate(prazo.getDate() + 7);
-
-            controladorBanco.push({
-                id: gerarIdUnico(aulaBase.titulo, turma, indexAula),
-                firebaseId: aulaBase.id,
-                turma: turma,
-                titulo: aulaBase.titulo,
-                objetoConhecimento: aulaBase.objetoConhecimento,
-                unidadeTematica: aulaBase.unidadeTematica || "Ginásticas",
-                habilidade: aulaBase.habilidade || "EF67EF07",
-                descricao: aulaBase.descricao,
-                bimestre: aulaBase.bimestre || 1,
-                status: "Não iniciada",
-                numAulas: aulaBase.numAulas || 2,
-                aulasExecutadas: 0,
-                dataInicio: dataInicio.toISOString().split('T')[0],
-                prazo: prazo.toISOString().split('T')[0]
-            });
-
-            alterou = true;
-        }
-
-    });
-
-});
-// 🔴 REMOVER aulas que não existem mais no Planejamento
-const tamanhoAntes = controladorBanco.length;
-
-controladorBanco = controladorBanco.filter(aulaControlador =>
-    aulasFirebase.some(aulaFirebase =>
-        aulaFirebase.id === aulaControlador.firebaseId
-    )
-);
-
-if (controladorBanco.length !== tamanhoAntes) {
-    alterou = true;
-}
-if (alterou) {
-    set(controladorRef, {
-        aulas: controladorBanco,
-        aulaAtualId: data?.aulaAtualId || null,
-        ultimaAtualizacao: new Date().toISOString()
-    });
-}
-
-aulasControlador = controladorBanco;
-console.log('Controlador sincronizado corretamente:', aulasControlador.length);
-                
-                // Carregar aula selecionada
-                if (data && data.aulaAtualId) {
-                    aulaAtualId = data.aulaAtualId;
-                    aulaSelecionada = aulasControlador.find(a => a.id === aulaAtualId);
+                    controladorBanco.push({
+                        id: gerarIdUnico(aulaBase.titulo, turma, indexAula),
+                        firebaseId: aulaBase.id,
+                        turma: turma,
+                        titulo: aulaBase.titulo,
+                        objetoConhecimento: aulaBase.objetoConhecimento,
+                        unidadeTematica: aulaBase.unidadeTematica || "Ginásticas",
+                        habilidade: aulaBase.habilidade || "EF67EF07",
+                        descricao: aulaBase.descricao,
+                        bimestre: aulaBase.bimestre || 1,
+                        status: "Não iniciada",
+                        numAulas: Number(aulaBase.numAulas) || 2, // Garante que usa o valor novo
+                        aulasExecutadas: 0,
+                        dataInicio: dataInicio.toISOString().split('T')[0],
+                        prazo: prazo.toISOString().split('T')[0]
+                    });
+                    alterou = true;
+                } else {
+                    // ATUALIZAÇÃO (O que faltava): 
+                    // Se o número de aulas no planejamento (aulaBase) for diferente do controlador da turma
+                    if (Number(jaExiste.numAulas) !== Number(aulaBase.numAulas)) {
+                        jaExiste.numAulas = Number(aulaBase.numAulas); // Atualiza para 4 aulas
+                        
+                        // Recalcula o status: se agora são 4 aulas e ele tinha feito 2, 
+                        // não pode mais estar "Concluída", volta para "Em Andamento"
+                        if (jaExiste.aulasExecutadas < jaExiste.numAulas && jaExiste.aulasExecutadas > 0) {
+                            jaExiste.status = "Em Andamento";
+                        } else if (jaExiste.aulasExecutadas >= jaExiste.numAulas) {
+                            jaExiste.status = "Concluída";
+                        }
+                        
+                        alterou = true;
+                    }
                 }
-                
-                aulasFiltradas = [...aulasControlador];
-                atualizarInterface();
+            });
+        });
+
+        // REMOVER aulas excluídas (Sua lógica atual)
+        const tamanhoAntes = controladorBanco.length;
+        controladorBanco = controladorBanco.filter(aulaControlador =>
+            aulasFirebase.some(aulaFirebase => aulaFirebase.id === aulaControlador.firebaseId)
+        );
+        if (controladorBanco.length !== tamanhoAntes) alterou = true;
+
+        if (alterou) {
+            set(controladorRef, {
+                aulas: controladorBanco,
+                aulaAtualId: data?.aulaAtualId || null,
+                ultimaAtualizacao: new Date().toISOString()
             });
         }
 
+        aulasControlador = controladorBanco;
+        
+        if (data && data.aulaAtualId) {
+            aulaAtualId = data.aulaAtualId;
+            aulaSelecionada = aulasControlador.find(a => a.id === aulaAtualId);
+        }
+        
+        aulasFiltradas = [...aulasControlador];
+        atualizarInterface();
+    });
+}
         // Inicializar dados padrão com descrições completas e distribuir para todas as turmas
         function inicializarDadosPadrao() {
             // Aulas base (cada uma será distribuída para todas as turmas)
